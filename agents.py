@@ -22,8 +22,26 @@ class CivilianAgent(Agent):
     def move_towards(self, target):
         # Calculate the next step towards the target
         next_step = self.get_next_step_towards(target)
-        # Move to the next step
-        self.model.grid.move_agent(self, next_step)
+        # Check if the next step is within the grid boundaries
+        if self.model.grid.out_of_bounds(next_step):
+            return
+        # Check if the cell contains any agents
+        cell_contents = self.model.grid.get_cell_list_contents([next_step])
+        if not cell_contents or not isinstance(cell_contents[0], OrangeCell):
+            self.model.grid.move_agent(self, next_step)
+
+        else:
+            # Find an alternative step
+            self.find_alternative_step(target)
+
+    def find_alternative_step(self, target):
+        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
+        for step in possible_steps:
+            if not self.model.grid.out_of_bounds(step):
+                cell_contents = self.model.grid.get_cell_list_contents([step])
+                if not cell_contents or not isinstance(cell_contents[0], OrangeCell):
+                    self.model.grid.move_agent(self, step)
+                    return
 
     def get_next_step_towards(self, target):
         # Get the current position
@@ -52,42 +70,43 @@ class CivilianAgent(Agent):
 
 
 class MilitaryAgent(Agent):
-    """A military agent moving towards high-density civilian areas."""
+    """A military agent forming groups to surround and remove TAgents."""
 
     def __init__(self, unique_id, model):
         super().__init__(unique_id, model)
-        # Additional properties can be defined here if needed
+        self.group = []
 
     def step(self):
-        target = self.find_high_density_area()
+        self.form_group()
+        target = self.find_terrorist_agent()
         if target:
             self.move_towards(target)
+            self.check_and_remove_terrorist_agent(target)
 
-    def find_high_density_area(self):
-        # Create a dictionary to count civilians in each cell
-        civilian_counts = {}
-        for agent in self.model.schedule.agents:
-            if isinstance(agent, CivilianAgent):
-                pos = agent.pos
-                if pos in civilian_counts:
-                    civilian_counts[pos] += 1
-                else:
-                    civilian_counts[pos] = 1
-
-        # Find the position with the highest number of civilians
-        if civilian_counts:
-            max_civilians = max(civilian_counts.values())
-            high_density_areas = [pos for pos, count in civilian_counts.items() if count == max_civilians]
-            # Find the closest high-density area
-            closest_area = min(high_density_areas, key=lambda pos: self.get_distance(self.pos, pos))
-            return closest_area
+    def form_group(self):
+        # Communicate with other MilitaryAgents to form groups of 4
+        neighbors = self.model.grid.get_neighbors(self.pos, moore=True, include_center=False, radius=2)
+        self.group = [agent for agent in neighbors if isinstance(agent, MilitaryAgent)]
+        if len(self.group) < 4:
+            self.group.append(self)
+    def find_terrorist_agent(self):
+        # Find the closest TAgent
+        terrorist_agents = [agent for agent in self.model.schedule.agents if isinstance(agent, TerroristAgent)]
+        if terrorist_agents:
+            closest_terrorist_agent = min(terrorist_agents, key=lambda agent: self.get_distance(self.pos, agent.pos))
+            return closest_terrorist_agent.pos
         return None
 
     def move_towards(self, target):
         # Calculate the next step towards the target
         next_step = self.get_next_step_towards(target)
-        # Move to the next step
-        self.model.grid.move_agent(self, next_step)
+        # Check if the next step is within the grid boundaries
+        if self.model.grid.out_of_bounds(next_step):
+            return
+        # Check if the cell contains any agents
+        cell_contents = self.model.grid.get_cell_list_contents([next_step])
+        if not cell_contents or not isinstance(cell_contents[0], OrangeCell):
+            self.model.grid.move_agent(self, next_step)
 
     def get_next_step_towards(self, target):
         # Get the current position
@@ -98,6 +117,17 @@ class MilitaryAgent(Agent):
         step = (current_pos[0] + (1 if direction[0] > 0 else -1 if direction[0] < 0 else 0),
                 current_pos[1] + (1 if direction[1] > 0 else -1 if direction[1] < 0 else 0))
         return step
+
+    def check_and_remove_terrorist_agent(self, target):
+        # Check if the TAgent is surrounded by 4 MilitaryAgents
+        neighbors = self.model.grid.get_neighbors(target, moore=True, include_center=False, radius=1)
+        military_agents = [agent for agent in neighbors if isinstance(agent, MilitaryAgent)]
+        if len(military_agents) >= 4:
+            # Remove the TAgent
+            terrorist_agent = [agent for agent in self.model.grid.get_cell_list_contents([target]) if isinstance(agent, TerroristAgent)]
+            if terrorist_agent:
+                self.model.grid.remove_agent(terrorist_agent[0])
+                self.model.schedule.remove(terrorist_agent[0])
 
     @staticmethod
     def get_distance(pos1, pos2):

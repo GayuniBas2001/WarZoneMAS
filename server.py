@@ -4,6 +4,7 @@ from mesa.visualization.modules import ChartModule
 from mesa.visualization.UserParam import UserSettableParameter
 from model import WarZoneModel
 from agents import CivilianAgent, MilitaryAgent, TerroristAgent, OrangeCell
+from report_element import ReportElement
 
 def agent_portrayal(agent):
     """
@@ -44,7 +45,7 @@ model_params = {
 # Create a server to run the model with visualization
 server = ModularServer(
     WarZoneModel,
-    [grid, chart],
+    [grid, chart, ReportElement()],
     "WarZoneMAS",
     # {"width": grid_width, "height": grid_height, "n_civilians": 100, "n_military": 10, "n_terrorists": 5}
     model_params

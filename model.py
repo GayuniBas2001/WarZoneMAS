@@ -17,6 +17,17 @@ class WarZoneModel(Model):
         self.crowded_areas = [(2,2), (7, 15), (15, 7), (10, 15), (10, 29), (27, 25), (28,3), (2,28)]
         self.high_value_areas = [(30 // 2, 30 // 2)]  # Example high-value area
 
+        # Track initial populations
+        self.initial_civilians = num_civilians
+        self.initial_military = num_military
+        self.initial_terrorists = num_terrorists
+
+                # Track casualties
+        self.civilian_casualties = 0
+        self.military_casualties = 0
+        self.terrorist_casualties = 0
+        self.danger_zones_created = 0
+
         # Add civilians
         for i in range(num_civilians):
             civilian = CivilianAgent(i,self)
@@ -42,21 +53,104 @@ class WarZoneModel(Model):
             self.grid.place_agent(terrorist, (x, y))
 
         # Add a DataCollector to track agent counts
+        # self.datacollector = DataCollector(
+        #     {
+        #         "Civilians": lambda m: sum(
+        #             1 for a in m.schedule.agents if isinstance(a, CivilianAgent)
+        #         ),
+        #         "Military": lambda m: sum(
+        #             1 for a in m.schedule.agents if isinstance(a, MilitaryAgent)
+        #         ),
+        #         "Terrorists": lambda m: sum(
+        #             1 for a in m.schedule.agents if isinstance(a, TerroristAgent)
+        #         ),
+        #     }
+        # )
+        # self.datacollector.collect(self)
+
+                # Add data collector
         self.datacollector = DataCollector(
             {
-                "Civilians": lambda m: sum(
-                    1 for a in m.schedule.agents if isinstance(a, CivilianAgent)
-                ),
-                "Military": lambda m: sum(
-                    1 for a in m.schedule.agents if isinstance(a, MilitaryAgent)
-                ),
-                "Terrorists": lambda m: sum(
-                    1 for a in m.schedule.agents if isinstance(a, TerroristAgent)
-                ),
+                "Civilians": lambda m: self.count_type(m, CivilianAgent),
+                "Military": lambda m: self.count_type(m, MilitaryAgent),
+                "Terrorists": lambda m: self.count_type(m, TerroristAgent),
             }
         )
-        self.datacollector.collect(self)
+
+        # Initialize report attribute
+        self.report = None
 
     def step(self):
-        """Advance the model by one step."""
+        self.datacollector.collect(self)
         self.schedule.step()
+        self.check_for_report()
+
+    def check_for_report(self):
+        civilian_count = self.count_type(self, CivilianAgent)
+        military_count = self.count_type(self, MilitaryAgent)
+        terrorist_count = self.count_type(self, TerroristAgent)
+
+        if civilian_count == 0 or military_count == 0 or terrorist_count == 0:
+            self.generate_report()
+            self.running = False
+
+    def generate_report(self):
+        final_civilians = self.count_type(self, CivilianAgent)
+        final_military = self.count_type(self, MilitaryAgent)
+        final_terrorists = self.count_type(self, TerroristAgent)
+
+        self.report = {
+            "Initial vs. Final Population": {
+                "Civilians": f"{self.initial_civilians} -> {final_civilians}",
+                "Military": f"{self.initial_military} -> {final_military}",
+                "Terrorists": f"{self.initial_terrorists} -> {final_terrorists}",
+            },
+            "Casualty Distribution": {
+                "Civilians": self.civilian_casualties,
+                "Military": self.military_casualties,
+                "Terrorists": self.terrorist_casualties,
+            },
+            "Rate of Attrition": {
+                "Civilians": self.civilian_casualties / self.schedule.steps,
+                "Military": self.military_casualties / self.schedule.steps,
+                "Terrorists": self.terrorist_casualties / self.schedule.steps,
+            },
+            "Military Effectiveness": {
+                "Terrorists Neutralized": self.terrorist_casualties,
+                "Military Losses": self.military_casualties,
+            },
+            "Terrorist Impact": {
+                "Civilian Casualties": self.civilian_casualties,
+                "Danger Zones Created": self.danger_zones_created,
+            },
+            "Effective Ratio": {
+                "Civilians to Military": final_civilians / final_military if final_military > 0 else "N/A",
+                "Civilians to Terrorists": final_civilians / final_terrorists if final_terrorists > 0 else "N/A",
+                "Military to Terrorists": final_military / final_terrorists if final_terrorists > 0 else "N/A",
+            }
+        }
+        print("Simulation Report:")
+        for key, value in self.report.items():
+            print(f"{key}: {value}")
+
+    @staticmethod
+    def count_type(model, agent_type):
+        count = 0
+        for agent in model.schedule.agents:
+            if isinstance(agent, agent_type):
+                count += 1
+        return count
+
+    def remove_agent(self, agent):
+        if isinstance(agent, CivilianAgent):
+            self.civilian_casualties += 1
+        elif isinstance(agent, MilitaryAgent):
+            self.military_casualties += 1
+        elif isinstance(agent, TerroristAgent):
+            self.terrorist_casualties += 1
+        self.grid.remove_agent(agent)
+        self.schedule.remove(agent)
+
+    def create_danger_zone(self, pos):
+        self.danger_zones_created += 1
+        self.grid.place_agent(OrangeCell(pos), pos)
