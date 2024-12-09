@@ -100,12 +100,32 @@ class MilitaryAgent(Agent):
     def move_towards(self, target):
         # Calculate the next step towards the target
         next_step = self.get_next_step_towards(target)
-        # Check if the next step is within the grid boundaries
-        if self.model.grid.out_of_bounds(next_step):
-            return
-        # Check if the cell contains any agents
-        cell_contents = self.model.grid.get_cell_list_contents([next_step])
-        if not cell_contents or not isinstance(cell_contents[0], OrangeCell):
+        # Check if the next step is within the grid boundaries and not an OrangeCell
+        if not self.model.grid.out_of_bounds(next_step):
+            cell_contents = self.model.grid.get_cell_list_contents([next_step])
+            if not any(isinstance(agent, OrangeCell) for agent in cell_contents):
+                self.model.grid.move_agent(self, next_step)
+            else:
+                # Find an alternative step
+                self.find_alternative_step(target)
+        else:
+            # Find an alternative step
+            self.find_alternative_step(target)
+
+    def find_alternative_step(self, target):
+        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
+        for step in possible_steps:
+            if not self.model.grid.out_of_bounds(step):
+                cell_contents = self.model.grid.get_cell_list_contents([step])
+                if not any(isinstance(agent, OrangeCell) for agent in cell_contents):
+                    self.model.grid.move_agent(self, step)
+                    return
+
+    def random_move(self):
+        possible_steps = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
+        valid_steps = [step for step in possible_steps if not self.model.grid.out_of_bounds(step) and not any(isinstance(agent, OrangeCell) for agent in self.model.grid.get_cell_list_contents([step]))]
+        if valid_steps:
+            next_step = random.choice(valid_steps)
             self.model.grid.move_agent(self, next_step)
 
     def get_next_step_towards(self, target):

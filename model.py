@@ -1,8 +1,11 @@
 from mesa import Model
 from mesa.time import RandomActivation
 from mesa.space import MultiGrid
-from agents import CivilianAgent, MilitaryAgent, TerroristAgent
+from agents import CivilianAgent, MilitaryAgent, TerroristAgent, OrangeCell
 from mesa.datacollection import DataCollector
+from report_element import display_report
+import tkinter as tk
+from tkinter import messagebox
 
 class WarZoneModel(Model):
     """The main WarZoneMAS model."""
@@ -22,7 +25,7 @@ class WarZoneModel(Model):
         self.initial_military = num_military
         self.initial_terrorists = num_terrorists
 
-                # Track casualties
+        # Track casualties
         self.civilian_casualties = 0
         self.military_casualties = 0
         self.terrorist_casualties = 0
@@ -52,22 +55,6 @@ class WarZoneModel(Model):
             y = self.random.randrange(self.grid.height)
             self.grid.place_agent(terrorist, (x, y))
 
-        # Add a DataCollector to track agent counts
-        # self.datacollector = DataCollector(
-        #     {
-        #         "Civilians": lambda m: sum(
-        #             1 for a in m.schedule.agents if isinstance(a, CivilianAgent)
-        #         ),
-        #         "Military": lambda m: sum(
-        #             1 for a in m.schedule.agents if isinstance(a, MilitaryAgent)
-        #         ),
-        #         "Terrorists": lambda m: sum(
-        #             1 for a in m.schedule.agents if isinstance(a, TerroristAgent)
-        #         ),
-        #     }
-        # )
-        # self.datacollector.collect(self)
-
                 # Add data collector
         self.datacollector = DataCollector(
             {
@@ -92,12 +79,16 @@ class WarZoneModel(Model):
 
         if civilian_count == 0 or military_count == 0 or terrorist_count == 0:
             self.generate_report()
-            self.running = False
 
     def generate_report(self):
         final_civilians = self.count_type(self, CivilianAgent)
         final_military = self.count_type(self, MilitaryAgent)
         final_terrorists = self.count_type(self, TerroristAgent)
+
+        self.civilian_casualties = self.initial_civilians-final_civilians
+        self.military_casualties = self.initial_military-final_military
+        self.terrorist_casualties = self.initial_terrorists-final_terrorists
+        self.danger_zones_created = self.count_type(self, OrangeCell)
 
         self.report = {
             "Initial vs. Final Population": {
@@ -105,12 +96,12 @@ class WarZoneModel(Model):
                 "Military": f"{self.initial_military} -> {final_military}",
                 "Terrorists": f"{self.initial_terrorists} -> {final_terrorists}",
             },
-            "Casualty Distribution": {
-                "Civilians": self.civilian_casualties,
-                "Military": self.military_casualties,
-                "Terrorists": self.terrorist_casualties,
+            "Casualty Distribution": { #Number of civilians, military personnel, and terrorists removed over time
+                "Civilians": f"{self.civilian_casualties}",
+                "Military": f"{self.military_casualties}",
+                "Terrorists": f"{self.terrorist_casualties}",
             },
-            "Rate of Attrition": {
+            "Rate of Attrition": { #The pace at which each type of agent was removed
                 "Civilians": self.civilian_casualties / self.schedule.steps,
                 "Military": self.military_casualties / self.schedule.steps,
                 "Terrorists": self.terrorist_casualties / self.schedule.steps,
@@ -132,6 +123,19 @@ class WarZoneModel(Model):
         print("Simulation Report:")
         for key, value in self.report.items():
             print(f"{key}: {value}")
+        print("All Done!")
+
+        root = tk.Tk()
+        # root.withdraw()  # Hide the root window
+        report_text = ""
+        for key, value in self.report.items():
+            report_text += f"{key}:\n"
+            for sub_key, sub_value in value.items():
+                report_text += f"  {sub_key}: {sub_value}\n"
+            report_text += "\n"
+        messagebox.showinfo("Simulation Report", report_text)
+        root.destroy()
+        self.running = False
 
     @staticmethod
     def count_type(model, agent_type):
